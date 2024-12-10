@@ -1,16 +1,42 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Eraser, RotateCcw, Lightbulb, CheckCircle2, Pencil } from 'lucide-react';
+import { Eraser, RotateCcw, Lightbulb, CheckCircle2, Pencil, Mic, Square, PlayCircle } from 'lucide-react';
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const QuestionSketchPad = () => {
   const canvasRef = useRef(null);
   const $forceRef = useRef(null);
   const $touchesRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const drawingActionsRef = useRef([]);
+  
   const [isEraser, setIsEraser] = useState(false);
   const [serverResponse, setServerResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioChunks, setAudioChunks] = useState([]);
+  const [recordedAudio, setRecordedAudio] = useState(null);
+  const [drawingActions, setDrawingActions] = useState([]);
+  const [error, setError] = useState(null);
+  const [hasAudioDevice, setHasAudioDevice] = useState(false);
+
+  // Check for audio devices on component mount
+  useEffect(() => {
+    const checkAudioDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioDevices = devices.filter(device => device.kind === 'audioinput');
+        setHasAudioDevice(audioDevices.length > 0);
+      } catch (err) {
+        console.error('Error checking audio devices:', err);
+        setHasAudioDevice(false);
+      }
+    };
+
+    checkAudioDevices();
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
@@ -25,7 +51,7 @@ const QuestionSketchPad = () => {
       canvas.height = rect.height * 2;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
-      context.scale(2, 2); // Scale for retina display
+      context.scale(2, 2);
     };
     
     resizeCanvas();
@@ -65,6 +91,15 @@ const QuestionSketchPad = () => {
         context.beginPath();
         context.moveTo(point.x, point.y);
         context.stroke();
+      }
+
+      // Record drawing action if recording
+      if (isRecording) {
+        drawingActionsRef.current.push({
+          type: isEraser ? 'erase' : 'draw',
+          points: [...stroke],
+          timestamp: Date.now()
+        });
       }
     };
 
@@ -145,7 +180,6 @@ const QuestionSketchPad = () => {
       }
     };
 
-    // Add event listeners
     canvas.addEventListener('touchstart', handleStart);
     canvas.addEventListener('mousedown', handleStart);
     canvas.addEventListener('touchmove', handleMove);
@@ -164,7 +198,83 @@ const QuestionSketchPad = () => {
       canvas.removeEventListener('touchleave', handleEnd);
       canvas.removeEventListener('mouseup', handleEnd);
     };
-  }, [isEraser]);
+  }, [isEraser, isRecording]);
+
+  const startRecording = async () => {
+    try {
+      setError(null); // Clear any previous errors
+      
+      if (!hasAudioDevice) {
+        throw new Error('No microphone found. Please connect a microphone and try again.');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true,
+        video: false
+      });
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      // Reset recording data
+      setAudioChunks([]);
+      drawingActionsRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          setAudioChunks((chunks) => [...chunks, event.data]);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setRecordedAudio(audioUrl);
+        setDrawingActions(drawingActionsRef.current);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      setError(error.message || 'Error starting recording. Please check microphone permissions.');
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.error('Error stopping recording:', err);
+        setError('Error stopping recording. Please refresh the page and try again.');
+      }
+      setIsRecording(false);
+    }
+  };
+
+  const playRecording = () => {
+    if (recordedAudio) {
+      const audio = new Audio(recordedAudio);
+      audio.play();
+      
+      // Replay drawing actions
+      const startTime = Date.now();
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      // Clear canvas first
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      
+      drawingActions.forEach(action => {
+        setTimeout(() => {
+          drawOnCanvas(action.points);
+        }, action.timestamp - drawingActions[0].timestamp);
+      });
+    }
+  };
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
@@ -197,11 +307,10 @@ const QuestionSketchPad = () => {
       // Create FormData and append the blob as a file
       const formData = new FormData();
       formData.append('image', blob, 'drawing.png');
-      formData.append('text', 'your text here'); // Add any text you want to send
+      formData.append('text', 'your text here');
       
-      const response = await fetch(`http://172.21.52.155:8000/${endpoint}`, {
+      const response = await fetch(`http://172.21.53.6:8000/${endpoint}`, {
         method: 'POST',
-        // Don't set Content-Type header - browser will set it automatically with boundary
         body: formData,
       });
       
@@ -218,14 +327,15 @@ const QuestionSketchPad = () => {
     setIsLoading(false);
   };
 
+
   return (
     <div className="flex flex-col h-screen">
       <div className="p-4 bg-white border-b">
-          <h2 className="text-xl font-semibold">Question:</h2>
-          <p className="mt-2">
-              Solve the following quadratic equation:
-              <span className="text-lg font-mono">  2x<sup>2</sup> + 3x - 5 = 0</span>
-          </p>
+        <h2 className="text-xl font-semibold">Question:</h2>
+        <p className="mt-2">
+          Solve the following quadratic equation:
+          <span className="text-lg font-mono">  2x<sup>2</sup> + 3x - 5 = 0</span>
+        </p>
       </div>
 
       <div className="p-2 bg-white border-b flex gap-2">
@@ -261,6 +371,36 @@ const QuestionSketchPad = () => {
           <CheckCircle2 size={20} />
           Check
         </button>
+        
+        {/* Recording Controls */}
+        <div className="ml-auto flex gap-2">
+          {!isRecording ? (
+            <button
+              onClick={startRecording}
+              className="p-2 bg-red-100 rounded hover:bg-red-200 flex items-center gap-1"
+            >
+              <Mic size={20} />
+              Record
+            </button>
+          ) : (
+            <button
+              onClick={stopRecording}
+              className="p-2 bg-red-500 text-white rounded hover:bg-red-600 flex items-center gap-1"
+            >
+              <Square size={20} />
+              Stop
+            </button>
+          )}
+          {recordedAudio && (
+            <button
+              onClick={playRecording}
+              className="p-2 bg-green-100 rounded hover:bg-green-200 flex items-center gap-1"
+            >
+              <PlayCircle size={20} />
+              Play
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="relative bg-gray-50 h-[50vh]">
@@ -271,6 +411,11 @@ const QuestionSketchPad = () => {
         />
         <div id="force" ref={$forceRef} className="absolute top-2 right-2 text-sm text-gray-600"></div>
         <div id="touches" ref={$touchesRef} className="absolute top-2 left-2 text-sm text-gray-600"></div>
+        {isRecording && (
+          <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-sm">
+            Recording...
+          </div>
+        )}
       </div>
 
       <div className="p-4 bg-white border-t">
