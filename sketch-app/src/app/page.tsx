@@ -159,16 +159,16 @@ const QuestionSketchPad = () => {
       }
 
       const touch = e.touches ? e.touches[0] : null;
-      if (touch && $touchesRef.current) {
-        $touchesRef.current.innerHTML = `
-          touchType = ${touch.touchType} ${touch.touchType === 'direct' ? '👆' : '✍️'} <br/>
-          radiusX = ${touch.radiusX} <br/>
-          radiusY = ${touch.radiusY} <br/>
-          rotationAngle = ${touch.rotationAngle} <br/>
-          altitudeAngle = ${touch.altitudeAngle} <br/>
-          azimuthAngle = ${touch.azimuthAngle} <br/>
-        `;
-      }
+      // if (touch && $touchesRef.current) {
+      //   $touchesRef.current.innerHTML = `
+      //     touchType = ${touch.touchType} ${touch.touchType === 'direct' ? '👆' : '✍️'} <br/>
+      //     radiusX = ${touch.radiusX} <br/>
+      //     radiusY = ${touch.radiusY} <br/>
+      //     rotationAngle = ${touch.rotationAngle} <br/>
+      //     altitudeAngle = ${touch.altitudeAngle} <br/>
+      //     azimuthAngle = ${touch.azimuthAngle} <br/>
+      //   `;
+      // }
     };
 
     const handleEnd = () => {
@@ -334,20 +334,11 @@ const QuestionSketchPad = () => {
         <h2 className="text-xl font-semibold">Question:</h2>
         <p className="mt-2">
           Solve the following quadratic equation:
-          <span className="text-lg font-mono">  2x<sup>2</sup> + 3x - 5 = 0</span>
+          <span className="text-lg font-mono">  9x<sup>4</sup> + 11x<sup>3</sup> - 73 = 0</span>
         </p>
       </div>
 
       <div className="p-2 bg-white border-b flex gap-2">
-        <button 
-          onClick={() => setIsEraser(!isEraser)}
-          className={`p-2 rounded flex items-center gap-1 ${
-            isEraser ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'
-          }`}
-        >
-          {isEraser ? <Eraser size={20} /> : <Pencil size={20} />}
-          {isEraser ? 'Eraser' : 'Pen'}
-        </button>
         <button 
           onClick={clearCanvas}
           className="p-2 bg-gray-100 rounded hover:bg-gray-200 flex items-center gap-1"
